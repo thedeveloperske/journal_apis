@@ -4,11 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import schemas, database, crud, auth
 from app.auth import Token
 from app.database import engine, Base
-from fastapi.security import OAuth2PasswordRequestForm
 from fastapi import Depends, HTTPException, status
 from datetime import timedelta
 from fastapi import Body
 from pydantic import BaseModel
+from app.models import Item
+from fastapi import Query
 
 app = FastAPI(
   title="Journal Apis for the Shamiri Institute case study",
@@ -22,7 +23,8 @@ Base.metadata.create_all(bind=engine)
 # Allow CORS for frontend
 origins = [
   "http://localhost:3000",
-  "http://localhost:8081"
+  "http://localhost:8081",
+  "http://localhost:8000"
 ]
 
 app.add_middleware(
@@ -42,7 +44,7 @@ def root():
 async def create_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
   existing_email = crud.get_user_by_email(db, user.email)
   if existing_email:
-      raise HTTPException(status_code=400, detail="Email already registered")
+    raise HTTPException(status_code=400, detail="Email already registered")
   return crud.create_user(db=db, user=user)   
 
 @app.get("/users", response_model=list[schemas.User])
@@ -76,9 +78,9 @@ async def login_for_access_token(
     user = auth.authenticate_user(db, login_req.email, login_req.password)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+           status_code=status.HTTP_401_UNAUTHORIZED,
+           detail="Incorrect email or password",
+           headers={"WWW-Authenticate": "Bearer"},
         )
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
@@ -113,3 +115,24 @@ def delete_item(item_id: int, db: Session = Depends(database.get_db)):
     if db_item is None:
         raise HTTPException(status_code=404, detail="Item not found")
     return crud.delete_item(db=db, item_id=item_id)
+
+@app.get("/items/search", response_model=list[schemas.ItemOut])
+def search_items_by_title(title: str = Query(...), db: Session = Depends(database.get_db)):
+    return db.query(Item).filter(Item.title.ilike(f"%{title}%")).all()
+
+@app.put("/items/{item_id}", response_model=schemas.Item)
+def update_item(item_id: int, item: schemas.ItemCreate, db: Session = Depends(database.get_db)):
+    db_item = crud.get_item(db, item_id=item_id)
+    if db_item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    # Update fields
+    db_item.title = item.title
+    db_item.category = item.category
+    db_item.mood = item.mood
+    db_item.content = item.content
+    db_item.owner_id = item.owner_id
+    db.commit()
+    db.refresh(db_item)
+    return db_item
+
+# ANALYTICS

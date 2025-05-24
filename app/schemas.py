@@ -40,3 +40,16 @@ class Item(ItemBase):
 
     class Config:
         from_attributes = True
+
+class ItemOut(BaseModel):
+  id: int
+  title: str
+  category: str
+  mood: str
+  content: str
+  owner_id: int
+  date_created: _dt.datetime
+  date_updated: _dt.datetime
+
+  class Config:
+    orm_mode = True
